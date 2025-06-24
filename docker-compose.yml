@@ -1,0 +1,51 @@
+# docker-compose.yml
+# Define os serviços, redes e volumes para o ambiente da aplicação.
+# Lê dados sensíveis do arquivo .env.
+
+version: '3.8'
+
+services:
+  # Serviço PHP & Apache
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ci3_erp_app
+    ports:
+      - "${APP_HOST_PORT:-8080}:80"
+    volumes:
+      - ./src:/var/www/html # Monta o código-fonte do CodeIgniter
+    environment:
+      - MYSQL_HOST=db
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+    depends_on:
+      - db
+    networks:
+      - app-network
+
+  # Serviço do Banco de Dados MySQL
+  db:
+    image: mysql:5.7
+    container_name: ci3_erp_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "${DB_HOST_PORT:-33066}:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  db_data:
+    driver: local
