@@ -14,7 +14,9 @@ services:
     ports:
       - "${APP_HOST_PORT:-8080}:80"
     volumes:
-      - ./src:/var/www/html # Monta o código-fonte do CodeIgniter
+      - ./src:/var/www/html 
+    env_file:
+      - .env
     environment:
       - MYSQL_HOST=db
       - MYSQL_DATABASE=${MYSQL_DATABASE}

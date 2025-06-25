@@ -1,12 +1,6 @@
 <?php
 defined('BASEPATH') OR exit('No direct script access allowed');
 
-/**
- * Webhook Controller
- *
- * Este controller é responsável por receber e processar webhooks
- * de sistemas externos para atualizar o status dos pedidos.
- */
 class Webhook extends CI_Controller {
 
     private $webhook_secret;
@@ -16,20 +10,23 @@ class Webhook extends CI_Controller {
         parent::__construct();
         $this->load->model('order_model');
         $this->load->helper('security');
-
-        // Carrega o arquivo de configuração personalizado 'montink.php'
         $this->load->config('montink');
-        // Atribui o token da configuração para uma variável da classe
         $this->webhook_secret = $this->config->item('webhook_secret_token');
     }
 
-    /**
-     * Processa o webhook de atualização de status do pedido.
-     */
     public function order_status()
     {
-        // 1. Validação de segurança usando o token da configuração
-        $token = $this->input->get_request_header('X-Webhook-Token', TRUE);
+        // 1. Extrair e validar Bearer token do header Authorization
+        $auth_header = $this->input->get_request_header('Authorization', TRUE);
+        if (!$auth_header || !preg_match('/Bearer\s(\S+)/', $auth_header, $matches)) {
+            $this->output
+                 ->set_status_header(401)
+                 ->set_content_type('application/json')
+                 ->set_output(json_encode(['error' => 'Token de autorização ausente ou inválido.']));
+            return;
+        }
+
+        $token = $matches[1];
         if ($token !== $this->webhook_secret) {
             $this->output
                  ->set_status_header(401)
@@ -38,14 +35,12 @@ class Webhook extends CI_Controller {
             return;
         }
 
-        // 2. Obter o corpo da requisição
+        // 2. Obter payload e limpar dados
         $payload = $this->input->raw_input_stream;
         $data = json_decode($payload, true);
-
-        // Limpeza dos dados para evitar XSS
         $data = $this->security->xss_clean($data);
 
-        // 3. Validar os dados recebidos
+        // 3. Validar dados
         if (!isset($data['order_id']) || !isset($data['status'])) {
             $this->output
                  ->set_status_header(400)
@@ -55,9 +50,9 @@ class Webhook extends CI_Controller {
         }
 
         $order_id = $data['order_id'];
-        $status = strtolower($data['status']); // Normaliza o status para minúsculas
+        $status = strtolower($data['status']);
 
-        // 4. Lógica de negócio baseada no status
+        // 4. Processar status
         try {
             if ($status === 'cancelado') {
                 $this->order_model->delete_order($order_id);
