@@ -10,7 +10,10 @@
 <div class="container mt-5">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2>Gerenciar Cupons</h2>
-        <a href="<?php echo site_url('management'); ?>" class="btn btn-info">Gerenciar Produtos</a>
+        <div>
+            <a href="<?php echo site_url('orders'); ?>" class="btn btn-info">Gerenciar Pedidos</a>
+            <a href="<?php echo site_url('management'); ?>" class="btn btn-info">Gerenciar Produtos</a>
+        </div>
     </div>
     <hr>
     

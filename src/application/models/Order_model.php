@@ -1,4 +1,6 @@
 <?php
+// src/application/models/Order_model.php
+
 defined('BASEPATH') OR exit('No direct script access allowed');
 
 class Order_model extends CI_Model {
@@ -90,5 +92,17 @@ class Order_model extends CI_Model {
         // ou também remover itens associados em 'order_items' (com transação).
         $this->db->where('id', $order_id);
         return $this->db->delete('orders');
+    }
+
+    /**
+     * Retorna todos os pedidos do banco de dados, ordenados por data de criação.
+     *
+     * @return array Array de objetos de pedidos.
+     */
+    public function get_all_orders()
+    {
+        $this->db->order_by('created_at', 'DESC');
+        $query = $this->db->get('orders');
+        return $query->result();
     }
 }

@@ -57,6 +57,8 @@ $route['translate_uri_dashes'] = FALSE;
 $route['management'] = 'management';
 $route['management/save_product'] = 'management/save_product';
 
+// Rotas para Pedidos
+$route['order'] = 'orders';
 
 // Rotas para cupons
 $route['coupons'] = 'coupons';
@@ -65,6 +67,7 @@ $route['coupons/save_coupon'] = 'coupons/save_coupon';
 $route['shop'] = 'shop';
 $route['shop/place_order'] = 'shop/place_order';
 
+// Rotas para API(Axios)
 $route['api/cart/add/(:num)'] = 'shop/api_add_to_cart/$1';
 $route['api/apply-coupon'] = 'shop/api_apply_coupon';
 $route['shop/get_address_by_cep/(:any)'] = 'shop/get_address_by_cep/$1';
