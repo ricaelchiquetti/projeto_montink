@@ -3,42 +3,43 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 
 class Coupon_model extends CI_Model {
 
-    protected $table = 'coupons';
-
-    public function get_all() {
-        $this->db->order_by('id', 'DESC');
-        return $this->db->get($this->table)->result_array();
+    public function __construct()
+    {
+        parent::__construct();
+        $this->load->database();
     }
 
-    public function get_by_id($id) {
-        return $this->db->get_where($this->table, ['id' => $id])->row_array();
+    /**
+     * Busca um cupom pelo código.
+     * @param string $code
+     * @return object|null
+     */
+    public function get_coupon_by_code($code)
+    {
+        $this->db->where('code', $code);
+        $this->db->where('is_active', 1);
+        $this->db->where('valid_until >', date('Y-m-d H:i:s'));
+        $query = $this->db->get('coupons');
+        return $query->row();
+    }
+    
+    /**
+     * Busca todos os cupons do banco.
+     * @return array
+     */
+    public function get_all_coupons()
+    {
+        $query = $this->db->get('coupons');
+        return $query->result();
     }
 
-    public function save($id, $form_data) {
-        // CORREÇÃO: Cria um array explícito apenas com os campos que
-        // existem na tabela do banco de dados. Isso previne erros
-        // ao tentar inserir ou atualizar campos que não existem.
-        $db_data = [
-            'code'            => $form_data['code'],
-            'discount_type'   => $form_data['discount_type'],
-            'discount_value'  => $form_data['discount_value'],
-            'min_order_value' => $form_data['min_order_value'],
-            'expiration_date' => $form_data['expiration_date'],
-            'is_active'       => $form_data['is_active'],
-        ];
-
-        if ($id) {
-            // Se um ID existe, atualiza o cupom correspondente
-            $this->db->where('id', $id);
-            return $this->db->update($this->table, $db_data);
-        } else {
-            // Se não houver ID, insere um novo cupom
-            return $this->db->insert($this->table, $db_data);
-        }
-    }
-
-    public function delete($id) {
-        $this->db->where('id', $id);
-        return $this->db->delete($this->table);
+    /**
+     * Salva um novo cupom.
+     * @param array $data
+     * @return bool
+     */
+    public function save_coupon($data)
+    {
+        return $this->db->insert('coupons', $data);
     }
 }

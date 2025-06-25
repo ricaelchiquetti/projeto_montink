@@ -50,7 +50,24 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 |		my-controller/my-method	-> my_controller/my_method
 */
 $route['default_controller'] = 'shop';
-$route['management'] = 'management'; // Nova rota para o painel
-$route['management/(:any)'] = 'management/$1'; // Permite chamar métodos da API
 $route['404_override'] = '';
 $route['translate_uri_dashes'] = FALSE;
+
+// Rota para a área de gerenciamento
+$route['management'] = 'management';
+$route['management/save_product'] = 'management/save_product';
+
+// Rota principal para a loja (formulário)
+$route['shop/place_order'] = 'shop/place_order';
+
+// Rotas para cupons
+$route['coupons'] = 'coupons';
+$route['coupons/save_coupon'] = 'coupons/save_coupon';
+
+$route['shop'] = 'shop';
+
+$route['api/cart/add/(:num)'] = 'shop/api_add_to_cart/$1';
+$route['api/apply-coupon'] = 'shop/api_apply_coupon';
+$route['shop/get_address_by_cep/(:any)'] = 'shop/get_address_by_cep/$1';
+
+$route['api/webhook/order_status'] = 'webhook/order_status';

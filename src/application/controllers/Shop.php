@@ -3,104 +3,203 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 
 class Shop extends CI_Controller {
 
-    public function __construct() {
+    public function __construct()
+    {
         parent::__construct();
-        // Carrega bibliotecas, helpers e models necessários
-        $this->load->model(['Product_model', 'Order_model']);
         $this->load->library(['session', 'form_validation']);
-        $this->load->helper('url');
+        $this->load->model(['product_model', 'order_model', 'coupon_model']);
+        $this->load->helper(['url', 'form', 'security']);
     }
 
-    // Carrega a view principal da loja/ERP
-    public function index() {
-        $this->load->view('shop/main_view');
-    }
-
-    /* =================================================================
-     * MÉTODOS DA API (CHAMADOS VIA JAVASCRIPT)
-     * ================================================================= */
-
-    // API: Retorna todos os produtos em formato JSON
-    public function api_list_products() {
-        header('Content-Type: application/json');
-        $products = $this->Product_model->get_all_products();
-        echo json_encode($products);
-    }
-
-    // API: Salva (cria ou atualiza) um produto
-    public function api_save_product() {
-        header('Content-Type: application/json');
-        $data = json_decode($this->input->raw_input_stream, true);
-        $id = !empty($data['id']) ? $data['id'] : null;
-
-        $product_data = ['name' => $data['name'], 'price' => $data['price']];
-        $inventory_data = ['quantity' => $data['inventory']];
-        
-        $result_id = $this->Product_model->save_product($id, $product_data, $inventory_data);
-
-        if ($result_id) {
-            echo json_encode(['status' => 'success', 'message' => 'Produto salvo com sucesso!']);
-        } else {
-            http_response_code(500);
-            echo json_encode(['status' => 'error', 'message' => 'Erro ao salvar o produto.']);
-        }
-    }
-
-    // API: Deleta um produto
-    public function api_delete_product() {
-        header('Content-Type: application/json');
-        $data = json_decode($this->input->raw_input_stream, true);
-        if ($this->Product_model->delete_product($data['id'])) {
-            echo json_encode(['status' => 'success', 'message' => 'Produto deletado com sucesso.']);
-        } else {
-            http_response_code(500);
-            echo json_encode(['status' => 'error', 'message' => 'Erro ao deletar o produto.']);
-        }
+    /**
+     * Exibe a página principal da loja com produtos e carrinho.
+     */
+    public function index()
+    {
+        $data['products'] = $this->product_model->get_products_with_stock();
+        $data['cart'] = $this->session->userdata('cart');
+        $this->load->view('shop/main_view', $data);
     }
     
-    // API: Retorna o estado atual do carrinho
-    public function api_get_cart() {
-        header('Content-Type: application/json');
-        $cart = $this->Order_model->get_cart_details();
-        echo json_encode($cart);
-    }
+    /**
+     * MÉTODO DE API: Adiciona um produto ao carrinho via AJAX.
+     */
+    public function api_add_to_cart($product_id)
+    {
+        $this->output->set_content_type('application/json');
+        $product = $this->product_model->get_product_by_id($product_id);
 
-    // API: Adiciona um item ao carrinho
-    public function api_add_to_cart() {
-        header('Content-Type: application/json');
-        $data = json_decode($this->input->raw_input_stream, true);
-        $product_id = $data['product_id'];
-        
-        $success = $this->Order_model->add_to_cart($product_id);
+        if ($product && $product->quantity > 0) {
+            $cart = $this->session->userdata('cart') ?: ['items' => [], 'subtotal' => 0, 'discount' => 0, 'coupon_code' => null];
+            $item_id = $product->id;
 
-        if($success) {
-            echo json_encode(['status' => 'success', 'message' => 'Item adicionado ao carrinho!']);
+            if (isset($cart['items'][$item_id])) {
+                $cart['items'][$item_id]['qty']++;
+            } else {
+                $cart['items'][$item_id] = [
+                    'id' => $product->id, 'name' => $product->name, 'price' => $product->price,
+                    'qty' => 1, 'variation' => $product->variation,
+                ];
+            }
+            $this->_update_cart_totals($cart);
+            $this->session->set_userdata('cart', $cart);
+
+            $this->output->set_status_header(200)->set_output(json_encode([
+                'message' => 'Produto adicionado com sucesso!', 'cart' => $cart
+            ]));
         } else {
-            http_response_code(400);
-            echo json_encode(['status' => 'error', 'message' => 'Estoque insuficiente ou produto não encontrado.']);
+            $this->output->set_status_header(400)->set_output(json_encode([
+                'message' => 'Produto sem estoque ou não encontrado!'
+            ]));
         }
     }
-    
-    // API: Finaliza o pedido
-    public function api_checkout() {
-        header('Content-Type: application/json');
-        $customer_data = json_decode($this->input->raw_input_stream, true);
 
-        // Validação simples dos dados do cliente
-        if(empty($customer_data['name']) || empty($customer_data['email']) || empty($customer_data['zipcode'])) {
-            http_response_code(400);
-            echo json_encode(['status' => 'error', 'message' => 'Por favor, preencha todos os dados de entrega.']);
+    /**
+     * MÉTODO DE API: Processa a aplicação do cupom via AJAX (Axios).
+     */
+    public function api_apply_coupon()
+    {
+        $this->output->set_content_type('application/json');
+
+        $coupon_code = $this->input->post('coupon_code');
+        $cart = $this->session->userdata('cart');
+
+        if (empty($cart) || empty($cart['items'])) {
+            $this->output->set_status_header(400)->set_output(json_encode(['message' => 'Carrinho vazio.']));
             return;
         }
 
-        $order_id = $this->Order_model->process_checkout($customer_data);
+        $coupon = $this->coupon_model->get_coupon_by_code($coupon_code);
+
+        if (!$coupon) {
+            $this->output->set_status_header(404)->set_output(json_encode(['message' => 'Cupom inválido ou expirado.']));
+            return;
+        }
+
+        if ($cart['subtotal'] < $coupon->min_purchase_amount) {
+            $this->output->set_status_header(400)->set_output(json_encode(['message' => 'Valor mínimo para este cupom não atingido.']));
+            return;
+        }
+
+        $discount = 0;
+        if ($coupon->discount_type == 'percentage') {
+            $discount = ($cart['subtotal'] * $coupon->value) / 100;
+        } else {
+            $discount = $coupon->value;
+        }
+
+        $cart['discount'] = $discount;
+        $cart['coupon_code'] = $coupon->code;
+        
+        $this->_update_cart_totals($cart);
+        $this->session->set_userdata('cart', $cart);
+
+        $this->output->set_status_header(200)->set_output(json_encode(['message' => 'Cupom aplicado com sucesso!', 'cart' => $cart]));
+    }
+    
+    /**
+     * Finaliza o pedido, salva no banco e envia e-mail.
+     */
+    public function place_order()
+    {
+        $this->form_validation->set_rules('customer_name', 'Nome', 'required|trim');
+        $this->form_validation->set_rules('customer_email', 'Email', 'required|valid_email|trim');
+        $this->form_validation->set_rules('customer_cep', 'CEP', 'required|trim');
+
+        if ($this->form_validation->run() == FALSE) {
+            $this->session->set_flashdata('error', validation_errors());
+            redirect('shop');
+            return;
+        }
+
+        $cart = $this->session->userdata('cart');
+        if (empty($cart) || empty($cart['items'])) {
+            $this->session->set_flashdata('error', 'Seu carrinho está vazio!');
+            redirect('shop');
+            return;
+        }
+
+        $orderData = [
+            'customer_name'     => $this->input->post('customer_name'),
+            'customer_email'    => $this->input->post('customer_email'),
+            'customer_cep'      => $this->input->post('customer_cep'),
+            'customer_address'  => $this->input->post('customer_address'),
+            'subtotal'          => $cart['subtotal'],
+            'shipping_cost'     => $cart['shipping_cost'],
+            'discount_amount'   => $cart['discount'] ?? 0,
+            'total'             => $cart['total'],
+            'status'            => 'pending',
+            'coupon_code'       => $cart['coupon_code'] ?? null,
+        ];
+        
+        $order_id = $this->order_model->save_order($orderData, $cart['items']);
 
         if ($order_id) {
-            // Aqui você pode adicionar o envio de email
-            echo json_encode(['status' => 'success', 'message' => "Pedido #{$order_id} finalizado com sucesso!"]);
+            $this->_send_confirmation_email($orderData, $cart, $order_id);
+            $this->session->unset_userdata('cart');
+            $this->session->set_flashdata('success', "Pedido #{$order_id} realizado com sucesso! Verifique seu e-mail.");
         } else {
-            http_response_code(400);
-            echo json_encode(['status' => 'error', 'message' => 'Não foi possível finalizar o pedido. O carrinho pode estar vazio.']);
+            $this->session->set_flashdata('error', 'Houve um erro ao processar seu pedido. O estoque pode ter mudado. Tente novamente.');
+        }
+
+        redirect('shop');
+    }
+    
+    /**
+     * Busca o endereço através do CEP.
+     */
+    public function get_address_by_cep($cep)
+    {
+        $cep = preg_replace("/[^0-9]/", "", $cep);
+        $url = "https://viacep.com.br/ws/{$cep}/json/";
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+        $output = curl_exec($ch);
+        curl_close($ch);
+
+        $this->output
+             ->set_content_type('application/json')
+             ->set_output($output);
+    }
+
+    private function _update_cart_totals(&$cart)
+    {
+        $subtotal = 0;
+        if (!empty($cart['items'])) {
+            foreach ($cart['items'] as &$item) {
+                $item['subtotal'] = $item['price'] * $item['qty'];
+                $subtotal += $item['subtotal'];
+            }
+        }
+        
+        $cart['subtotal'] = $subtotal;
+        $cart['shipping_cost'] = $this->_calculate_shipping($subtotal);
+        $discount = $cart['discount'] ?? 0;
+        $cart['total'] = ($subtotal - $discount) + $cart['shipping_cost'];
+    }
+
+    private function _calculate_shipping($subtotal)
+    {
+        if ($subtotal > 200) return 0.00;
+        if ($subtotal >= 52.00 && $subtotal <= 166.59) return 15.00;
+        return 20.00;
+    }
+
+    private function _send_confirmation_email($orderData, $cart, $order_id)
+    {
+        $this->load->library('email');
+        $this->email->from('nao-responda@sua-loja.com', 'Sua Loja');
+        $this->email->to($orderData['customer_email']);
+        $this->email->subject('Confirmação do Pedido #' . $order_id);
+        
+        $message = "<h1>Obrigado por seu pedido!</h1><p>Seu pedido #{$order_id} foi recebido e está sendo processado.</p>";
+        $this->email->message($message);
+
+        if (!$this->email->send()) {
+            log_message('error', 'Falha ao enviar e-mail de confirmação: ' . $this->email->print_debugger());
         }
     }
 }

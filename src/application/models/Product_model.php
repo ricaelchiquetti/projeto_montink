@@ -3,60 +3,90 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 
 class Product_model extends CI_Model {
 
-    public function __construct() {
+    public function __construct()
+    {
         parent::__construct();
         $this->load->database();
     }
 
-    // Retorna todos os produtos com seu estoque principal.
-    public function get_all_products() {
-        $this->db->select('p.id, p.name, p.price, inv.quantity as inventory');
+    /**
+     * Busca todos os produtos com suas informações de estoque.
+     * Junta as tabelas 'products' e 'stock'.
+     *
+     * @return array Lista de produtos.
+     */
+    public function get_products_with_stock()
+    {
+        $this->db->select('p.id, p.name, p.price, s.variation, s.quantity');
         $this->db->from('products as p');
-        $this->db->join('inventory as inv', 'p.id = inv.product_id AND inv.variation_id IS NULL', 'left');
-        $this->db->order_by('p.id', 'DESC');
-        return $this->db->get()->result_array();
+        $this->db->join('stock as s', 's.product_id = p.id', 'left');
+        $this->db->order_by('p.name', 'ASC');
+        $query = $this->db->get();
+        return $query->result();
     }
 
-    // Retorna um único produto pelo seu ID.
-    public function get_product_by_id($id) {
-        $this->db->select('p.id, p.name, p.price, inv.quantity as inventory');
+    /**
+     * Busca um único produto pelo seu ID, com informações de estoque.
+     *
+     * @param int $product_id O ID do produto.
+     * @return object|null O objeto do produto ou nulo se não encontrado.
+     */
+    public function get_product_by_id($product_id)
+    {
+        $this->db->select('p.id, p.name, p.price, s.id as stock_id, s.variation, s.quantity');
         $this->db->from('products as p');
-        $this->db->join('inventory as inv', 'p.id = inv.product_id AND inv.variation_id IS NULL', 'left');
-        $this->db->where('p.id', $id);
-        return $this->db->get()->row_array();
+        $this->db->join('stock as s', 's.product_id = p.id', 'left');
+        $this->db->where('p.id', $product_id);
+        $query = $this->db->get();
+        return $query->row();
     }
 
-    // Salva (cria ou atualiza) um produto e seu estoque.
-    public function save_product($id, $product_data, $inventory_data) {
+    /**
+     * Salva um novo produto e seu estoque inicial.
+     * Usa transação para garantir a integridade dos dados.
+     *
+     * @param array $product_data Dados do produto (nome, preço).
+     * @param array $stock_data Dados do estoque (variação, quantidade).
+     * @return bool
+     */
+    public function save_product($product_data, $stock_data)
+    {
         $this->db->trans_start();
 
-        if ($id) {
-            $this->db->where('id', $id)->update('products', $product_data);
-            $this->db->where('product_id', $id)->where('variation_id IS NULL')->update('inventory', $inventory_data);
-            $result_id = $id;
-        } else {
-            $this->db->insert('products', $product_data);
-            $result_id = $this->db->insert_id();
-            $inventory_data['product_id'] = $result_id;
-            $this->db->insert('inventory', $inventory_data);
-        }
-        
+        $this->db->insert('products', $product_data);
+        $product_id = $this->db->insert_id();
+
+        $stock_data['product_id'] = $product_id;
+        $this->db->insert('stock', $stock_data);
+
         $this->db->trans_complete();
-        return $this->db->trans_status() ? $result_id : false;
+
+        return $this->db->trans_status();
     }
 
-    // Deleta um produto (o DB cuida das chaves estrangeiras com ON DELETE CASCADE).
-    public function delete_product($id) {
+    /**
+     * Atualiza um produto e seu estoque.
+     *
+     * @param int $product_id
+     * @param array $product_data
+     * @param int $stock_id
+     * @param array $stock_data
+     * @return bool
+     */
+    public function update_product($product_id, $product_data, $stock_id, $stock_data)
+    {
         $this->db->trans_start();
-        
-        // Limpa o item do carrinho na sessão, se existir.
-        $cart = $this->session->userdata('cart') ?: [];
-        unset($cart[$id]);
-        $this->session->set_userdata('cart', $cart);
 
-        $this->db->where('id', $id)->delete('products');
+        // Atualiza o produto
+        $this->db->where('id', $product_id);
+        $this->db->update('products', $product_data);
+
+        // Atualiza o estoque
+        $this->db->where('id', $stock_id);
+        $this->db->update('stock', $stock_data);
 
         $this->db->trans_complete();
+
         return $this->db->trans_status();
     }
 }

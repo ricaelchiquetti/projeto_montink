@@ -3,89 +3,73 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 
 class Management extends CI_Controller {
 
-    public function __construct() {
+    public function __construct()
+    {
         parent::__construct();
-        // Apenas permite acesso em ambiente de desenvolvimento. Em produção, use um sistema de login.
-        if (ENVIRONMENT !== 'development') {
-            show_error('Acesso restrito.', 403);
-        }
-        $this->load->model(['Order_model', 'Coupon_model']);
-        $this->load->helper('url');
+        $this->load->model('product_model');
+        $this->load->library(['form_validation', 'session']);
+        $this->load->helper(['url', 'form']);
     }
 
-    public function index() {
-        $this->load->view('management/index_view');
+    /**
+     * Exibe a página de gerenciamento de produtos e a lista de produtos.
+     */
+    public function index()
+    {
+        $data['products'] = $this->product_model->get_products_with_stock();
+        $this->load->view('management/index_view', $data);
     }
 
-    /* =================================================================
-     * API: PEDIDOS (ORDERS)
-     * ================================================================= */
+    /**
+     * Salva (cria ou atualiza) um produto.
+     */
+    public function save_product()
+    {
+        $this->form_validation->set_rules('name', 'Nome do Produto', 'required');
+        $this->form_validation->set_rules('price', 'Preço', 'required');
+        $this->form_validation->set_rules('quantity', 'Quantidade', 'required|integer');
 
-    public function api_list_orders() {
-        header('Content-Type: application/json');
-        $orders = $this->Order_model->get_all_orders();
-        echo json_encode($orders);
-    }
-    
-    public function api_update_order_status() {
-        header('Content-Type: application/json');
-        $data = json_decode($this->input->raw_input_stream, true);
-        $id = $data['id'];
-        $status = $data['status'];
-        if ($this->Order_model->update_status($id, $status)) {
-            echo json_encode(['status' => 'success', 'message' => "Status do pedido #{$id} atualizado."]);
+        if ($this->form_validation->run() === FALSE) {
+            $this->session->set_flashdata('error', validation_errors());
         } else {
-            http_response_code(500);
-            echo json_encode(['status' => 'error', 'message' => 'Falha ao atualizar status.']);
+            $product_id = $this->input->post('product_id');
+            $stock_id = $this->input->post('stock_id');
+
+            // CORREÇÃO: Sanitização do preço para ser mais robusta.
+            $price_input = $this->input->post('price');
+            // Remove tudo que não for dígito, vírgula ou ponto.
+            $price_cleaned = preg_replace('/[^\d,.]/', '', $price_input);
+            // Substitui a vírgula por ponto para o formato do banco de dados.
+            $sanitized_price = str_replace(',', '.', $price_cleaned);
+
+            $product_data = [
+                'name' => $this->input->post('name'),
+                'price' => (float) $sanitized_price, // Garante que é um número
+            ];
+            $stock_data = [
+                'variation' => $this->input->post('variation'),
+                'quantity' => $this->input->post('quantity'),
+            ];
+
+            $success = false;
+            // Se houver um product_id, significa que é uma atualização.
+            if ($product_id && $stock_id) {
+                if ($this->product_model->update_product($product_id, $product_data, $stock_id, $stock_data)) {
+                   $success = true;
+                   $this->session->set_flashdata('success', 'Produto atualizado com sucesso!');
+                }
+            } else {
+                // Caso contrário, é uma inserção de um novo produto.
+                if ($this->product_model->save_product($product_data, $stock_data)) {
+                    $success = true;
+                    $this->session->set_flashdata('success', 'Produto criado com sucesso!');
+                }
+            }
+
+            if(!$success) {
+                $this->session->set_flashdata('error', 'Ocorreu um erro ao salvar o produto.');
+            }
         }
-    }
-
-    public function api_delete_order() {
-        header('Content-Type: application/json');
-        $data = json_decode($this->input->raw_input_stream, true);
-        if ($this->Order_model->delete_order($data['id'])) {
-            echo json_encode(['status' => 'success', 'message' => 'Pedido deletado com sucesso.']);
-        } else {
-            http_response_code(500);
-            echo json_encode(['status' => 'error', 'message' => 'Falha ao deletar pedido.']);
-        }
-    }
-    
-    /* =================================================================
-     * API: CUPONS (COUPONS)
-     * ================================================================= */
-
-    public function api_list_coupons() {
-        header('Content-Type: application/json');
-        echo json_encode($this->Coupon_model->get_all());
-    }
-
-    public function api_get_coupon($id) {
-        header('Content-Type: application/json');
-        echo json_encode($this->Coupon_model->get_by_id($id));
-    }
-
-    public function api_save_coupon() {
-        header('Content-Type: application/json');
-        $data = json_decode($this->input->raw_input_stream, true);
-        $id = !empty($data['id']) ? $data['id'] : null;
-
-        if ($this->Coupon_model->save($id, $data)) {
-            echo json_encode(['status' => 'success', 'message' => 'Cupom salvo com sucesso.']);
-        } else {
-            http_response_code(500);
-            echo json_encode(['status' => 'error', 'message' => 'Falha ao salvar cupom.']);
-        }
-    }
-
-    public function api_delete_coupon() {
-        header('Content-Type: application/json');
-        $data = json_decode($this->input->raw_input_stream, true);
-        if ($this->Coupon_model->delete($data['id'])) {
-            echo json_encode(['status' => 'success', 'message' => 'Cupom deletado com sucesso.']);
-        } else {
-            http_response_code(500);
-            echo json_encode(['status' => 'error', 'message' => 'Falha ao deletar cupom.']);
-        }
+        redirect('management');
     }
 }
