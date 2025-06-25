@@ -46,14 +46,7 @@ cd nome-da-pasta-do-projeto
 
 2. **Configurar ambiente**
 
-- No `docker-compose.yml`, configure o token seguro para o webhook:
-
-```yaml
-services:
-  app:
-    environment:
-      - WEBHOOK_SECRET_TOKEN=seu-token-super-secreto
-```
+- Crie o arquivo .env usando a exemple.env como exemplo.
 
 - A configuração do banco em `src/application/config/database.php` já está pronta para usar o serviço Docker `db`.
 
