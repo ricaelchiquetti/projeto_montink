@@ -57,14 +57,13 @@ $route['translate_uri_dashes'] = FALSE;
 $route['management'] = 'management';
 $route['management/save_product'] = 'management/save_product';
 
-// Rota principal para a loja (formulário)
-$route['shop/place_order'] = 'shop/place_order';
 
 // Rotas para cupons
 $route['coupons'] = 'coupons';
 $route['coupons/save_coupon'] = 'coupons/save_coupon';
 
 $route['shop'] = 'shop';
+$route['shop/place_order'] = 'shop/place_order';
 
 $route['api/cart/add/(:num)'] = 'shop/api_add_to_cart/$1';
 $route['api/apply-coupon'] = 'shop/api_apply_coupon';
